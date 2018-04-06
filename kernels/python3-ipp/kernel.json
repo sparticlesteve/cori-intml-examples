@@ -1,0 +1,14 @@
+{
+ "argv": [
+  "/usr/common/software/python/3.6-anaconda-4.4/bin/python",
+  "-m",
+  "ipykernel_launcher",
+  "-f",
+  "{connection_file}"
+ ],
+ "display_name": "Python 3 ipp",
+ "language": "python",
+ "env": {
+   "PYTHONPATH": "/global/cscratch1/sd/sfarrell/ipyparallel/lib/python3.6/site-packages"
+ }
+}
