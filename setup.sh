@@ -1,5 +1,5 @@
-# For the environment on cori, we need the python3 module
-# plus my own installation of ipyparallel (for now).
-module load python/3.6-anaconda-4.4
-export PYTHONPATH=/global/cscratch1/sd/sfarrell/ipyparallel/lib/python3.6/site-packages:$PYTHONPATH
-export PATH=/global/cscratch1/sd/sfarrell/ipyparallel/bin:$PATH
+# For the environment on cori, we need the tensorflow module
+# with horovod plus my own installations of ipyparallel, jupyter, etc.
+module load tensorflow/intel-horovod-mpi-1.6
+export PYTHONPATH=/global/cscratch1/sd/sfarrell/tf-hvd-ipp/lib/python2.7/site-packages:$PYTHONPATH
+export PATH=/global/cscratch1/sd/sfarrell/tf-hvd-ipp/bin:$PATH
