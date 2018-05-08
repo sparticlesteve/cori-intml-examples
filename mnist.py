@@ -42,7 +42,7 @@ def load_data():
     return x_train, y_train, x_test, y_test
 
 def build_model(h1=4, h2=8, h3=32, dropout=0.5,
-                optimizer_type=keras.optimizers.Adadelta):
+                optimizer='Adadelta'):
     """Construct our Keras model"""
     input_shape = (img_rows, img_cols, 1)
     model = Sequential()
@@ -54,6 +54,6 @@ def build_model(h1=4, h2=8, h3=32, dropout=0.5,
     model.add(Dense(h3, activation='relu'))
     model.add(Dropout(dropout))
     model.add(Dense(n_classes, activation='softmax'))
-    opt = optimizer_type()
-    model.compile(optimizer=opt, loss=categorical_crossentropy, metrics=['accuracy'])
+    model.compile(optimizer=optimizer, loss=categorical_crossentropy,
+                  metrics=['accuracy'])
     return model
