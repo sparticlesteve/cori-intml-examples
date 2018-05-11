@@ -25,7 +25,7 @@ def load_file(filename, n_samples):
 
 def build_model(input_shape,
                 h1=64, h2=128, h3=256, h4=256, h5=512,
-                optimizer=keras.optimizers.Adam, lr=0.001,
+                optimizer='Adam', lr=0.001,
                 use_horovod=True):
     # Define the NN layers
     inputs = layers.Input(shape=input_shape)
@@ -37,8 +37,15 @@ def build_model(input_shape,
     h = layers.Flatten()(h)
     h = layers.Dense(h5, activation='relu')(h)
     outputs = layers.Dense(1, activation='sigmoid')(h)
-    # Construct the distributed optimizer
-    opt = optimizer(lr=lr)
+    # Construct the optimizer
+    if optimizer == 'Adam':
+        opt = keras.optimizers.Adam(lr=lr)
+    elif optimizer == 'Nadam':
+        opt = keras.optimizers.Nadam(lr=lr)
+    elif optimizer == 'Adadelta':
+        opt = keras.optimizers.Adadelta(lr=lr)
+    else:
+        raise Exception('Unsupported optimizer type %s' % optimizer)
     if use_horovod:
         import horovod.keras as hvd
         opt = hvd.DistributedOptimizer(opt)
