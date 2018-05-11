@@ -12,13 +12,7 @@ import h5py
 
 # Deep learning
 import keras
-from keras.datasets import mnist
-from keras.models import Sequential
-from keras.layers import Dense, Dropout, Flatten
-from keras.layers import Conv2D, MaxPooling2D
-from keras.losses import categorical_crossentropy
-from keras import backend as K
-import tensorflow as tf
+from keras import layers, models
 
 
 def load_file(filename, n_samples):
