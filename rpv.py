@@ -26,7 +26,7 @@ def load_file(filename, n_samples):
 def build_model(input_shape,
                 h1=64, h2=128, h3=256, h4=256, h5=512,
                 optimizer='Adam', lr=0.001,
-                use_horovod=True):
+                use_horovod=False):
     # Define the NN layers
     inputs = layers.Input(shape=input_shape)
     conv_args = dict(kernel_size=(3, 3), activation='relu', padding='same')
@@ -60,7 +60,7 @@ def train_model(model, train_input, train_labels,
                 valid_input, valid_labels,
                 batch_size, n_epochs,
                 lr_warmup_epochs=0, lr_reduce_patience=8,
-                use_horovod=True):
+                use_horovod=False, verbose=2):
     """Train the model"""
     callbacks = []
     if use_horovod:
@@ -85,4 +85,4 @@ def train_model(model, train_input, train_labels,
     return model.fit(x=train_input, y=train_labels,
                      batch_size=batch_size, epochs=n_epochs,
                      validation_data=(valid_input, valid_labels),
-                     callbacks=callbacks, verbose=2)
+                     callbacks=callbacks, verbose=verbose)
