@@ -23,6 +23,17 @@ def load_file(filename, n_samples):
         weights = data_group['weight'][:n_samples]
     return data, labels, weights
 
+def load_dataset(path, n_train=412416, n_valid=137471, n_test=137471):
+    train_file = os.path.join(input_dir, 'train.h5')
+    valid_file = os.path.join(input_dir, 'val.h5')
+    test_file = os.path.join(input_dir, 'test.h5')
+    train_input, train_labels, train_weights = load_file(train_file, n_train)
+    valid_input, valid_labels, valid_weights = load_file(valid_file, n_valid)
+    test_input, test_labels, test_weights = load_file(test_file, n_test)
+    return ((train_input, train_labels, train_weights),
+            (valid_input, valid_labels, valid_weights),
+            (test_input, test_labels, test_weights))
+
 def build_model(input_shape,
                 h1=64, h2=128, h3=256, h4=256, h5=512,
                 optimizer='Adam', lr=0.001,
