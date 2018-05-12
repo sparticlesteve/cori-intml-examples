@@ -25,7 +25,8 @@ print('MPI rank %i, local rank %i, host %s' %
 n_train = 32000 #412416
 n_valid = 16000 #137471
 n_test = 16000 #137471
-input_dir = '/global/cscratch1/sd/sfarrell/atlas-rpv-images'
+input_dir = '/data0/users/sfarrell/atlas-rpv-images'
+#input_dir = '/global/cscratch1/sd/sfarrell/atlas-rpv-images'
 
 # Load the data files
 train_file = os.path.join(input_dir, 'train.h5')
@@ -46,7 +47,7 @@ lr = 0.01 * hvd.size()
 dropout = 0.5
 
 # Training config
-batch_size = 128
+batch_size = 32 #128
 n_epochs = 8
 
 # Build the model
