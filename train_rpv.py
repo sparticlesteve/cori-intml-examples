@@ -39,10 +39,11 @@ print('valid shape:', valid_input.shape)
 print('test shape: ', test_input.shape)
 
 # Model config
-h1, h2, h3, h4, h5 = 64, 128, 256, 256, 512
-optimizer = keras.optimizers.Adam
-#lr = 0.1 * hvd.size()
-lr = 0.001 * hvd.size()
+conv_sizes = [8, 16, 32]
+fc_sizes = [64]
+optimizer = 'Adam'
+lr = 0.01 * hvd.size()
+dropout = 0.5
 
 # Training config
 batch_size = 128
@@ -51,8 +52,8 @@ use_weights = False
 
 # Build the model
 model = build_model(train_input.shape[1:],
-                    h1=h1, h2=h2, h3=h3, h4=h4, h5=h5,
-                    optimizer=optimizer, lr=lr)
+                    conv_sizes=conv_sizes, fc_sizes=fc_sizes,
+                    dropout=dropout, optimizer=optimizer, lr=lr)
 if hvd.rank() == 0:
     model.summary()
 

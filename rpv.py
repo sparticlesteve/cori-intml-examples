@@ -35,19 +35,31 @@ def load_dataset(path, n_train=412416, n_valid=137471, n_test=137471):
             (test_input, test_labels, test_weights))
 
 def build_model(input_shape,
-                h1=64, h2=128, h3=256, h4=256, h5=512,
+                conv_sizes=[8, 16, 32], fc_sizes=[64],
+                dropout=0.5,
                 optimizer='Adam', lr=0.001,
                 use_horovod=False):
-    # Define the NN layers
+
+    # Define the inputs
     inputs = layers.Input(shape=input_shape)
+    h = inputs
+
+    # Convolutional layers
     conv_args = dict(kernel_size=(3, 3), activation='relu', padding='same')
-    h = layers.Conv2D(h1, strides=1, **conv_args)(inputs)
-    h = layers.Conv2D(h2, strides=2, **conv_args)(h)
-    h = layers.Conv2D(h3, strides=1, **conv_args)(h)
-    h = layers.Conv2D(h4, strides=2, **conv_args)(h)
+    for conv_size in conv_sizes:
+        h = layers.Conv2D(conv_size, **conv_args)(h)
+        h = layers.MaxPooling2D(pool_size=(2, 2))(h)
+    h = layers.Dropout(dropout)(h)
     h = layers.Flatten()(h)
-    h = layers.Dense(h5, activation='relu')(h)
+
+    # Fully connected  layers
+    for fc_size in fc_sizes:
+        h = layers.Dense(fc_size, activation='relu')(h)
+        h = layers.Dropout(dropout)(h)
+
+    # Ouptut layer
     outputs = layers.Dense(1, activation='sigmoid')(h)
+
     # Construct the optimizer
     opt_dict = dict(Adam=optimizers.Adam,
                     Nadam=optimizers.Nadam,
@@ -56,6 +68,7 @@ def build_model(input_shape,
     if use_horovod:
         import horovod.keras as hvd
         opt = hvd.DistributedOptimizer(opt)
+
     # Compile the model
     model = models.Model(inputs, outputs, 'RPVClassifier')
     model.compile(optimizer=opt,
