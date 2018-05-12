@@ -12,7 +12,7 @@ import h5py
 
 # Deep learning
 import keras
-from keras import layers, models
+from keras import layers, models, optimizers
 
 
 def load_file(filename, n_samples):
@@ -49,14 +49,10 @@ def build_model(input_shape,
     h = layers.Dense(h5, activation='relu')(h)
     outputs = layers.Dense(1, activation='sigmoid')(h)
     # Construct the optimizer
-    if optimizer == 'Adam':
-        opt = keras.optimizers.Adam(lr=lr)
-    elif optimizer == 'Nadam':
-        opt = keras.optimizers.Nadam(lr=lr)
-    elif optimizer == 'Adadelta':
-        opt = keras.optimizers.Adadelta(lr=lr)
-    else:
-        raise Exception('Unsupported optimizer type %s' % optimizer)
+    opt_dict = dict(Adam=optimizers.Adam,
+                    Nadam=optimizers.Nadam,
+                    Adadelta=optimizers.Adadelta)
+    opt = opt_dict[optimizer](lr=lr)
     if use_horovod:
         import horovod.keras as hvd
         opt = hvd.DistributedOptimizer(opt)
