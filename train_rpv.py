@@ -34,9 +34,9 @@ test_file = os.path.join(input_dir, 'test.h5')
 train_input, train_labels, train_weights = load_file(train_file, n_train)
 valid_input, valid_labels, valid_weights = load_file(valid_file, n_valid)
 test_input, test_labels, test_weights = load_file(test_file, n_test)
-print('train shape:', train_input.shape)
-print('valid shape:', valid_input.shape)
-print('test shape: ', test_input.shape)
+print('train shape:', train_input.shape, 'Mean label:', train_labels.mean())
+print('valid shape:', valid_input.shape, 'Mean label:', valid_labels.mean())
+print('test shape: ', test_input.shape, 'Mean label:', test_labels.mean())
 
 # Model config
 conv_sizes = [8, 16, 32]
@@ -48,7 +48,6 @@ dropout = 0.5
 # Training config
 batch_size = 128
 n_epochs = 8
-use_weights = False
 
 # Build the model
 model = build_model(train_input.shape[1:],
@@ -61,7 +60,8 @@ if hvd.rank() == 0:
 print('Begin training')
 history = train_model(model, train_input=train_input, train_labels=train_labels,
                       valid_input=valid_input, valid_labels=valid_labels,
-                      batch_size=batch_size, n_epochs=n_epochs)
+                      batch_size=batch_size, n_epochs=n_epochs,
+                      verbose=1)
 
 # Evaluate the final
 if hvd.rank() == 0:
