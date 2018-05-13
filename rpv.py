@@ -6,6 +6,7 @@ This module contains model and training code for the RPV classifier.
 from __future__ import print_function
 from __future__ import division
 from __future__ import absolute_import
+import os
 
 # Big data
 import h5py
@@ -24,9 +25,9 @@ def load_file(filename, n_samples):
     return data, labels, weights
 
 def load_dataset(path, n_train=412416, n_valid=137471, n_test=137471):
-    train_file = os.path.join(input_dir, 'train.h5')
-    valid_file = os.path.join(input_dir, 'val.h5')
-    test_file = os.path.join(input_dir, 'test.h5')
+    train_file = os.path.join(path, 'train.h5')
+    valid_file = os.path.join(path, 'val.h5')
+    test_file = os.path.join(path, 'test.h5')
     train_input, train_labels, train_weights = load_file(train_file, n_train)
     valid_input, valid_labels, valid_weights = load_file(valid_file, n_valid)
     test_input, test_labels, test_weights = load_file(test_file, n_test)
