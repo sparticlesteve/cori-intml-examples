@@ -81,7 +81,8 @@ def train_model(model, train_input, train_labels,
                 valid_input, valid_labels,
                 batch_size, n_epochs,
                 lr_warmup_epochs=0, lr_reduce_patience=8,
-                use_horovod=False, verbose=2):
+                checkpoint_file=None, use_horovod=False,
+                verbose=2):
     """Train the model"""
     callbacks = []
     if use_horovod:
@@ -97,11 +98,13 @@ def train_model(model, train_input, train_labels,
             hvd.callbacks.LearningRateWarmupCallback(
                 warmup_epochs=lr_warmup_epochs, verbose=1),
         ]
-    callbacks += [
+    callbacks.append(
         # Reduce the learning rate if training plateaues.
         keras.callbacks.ReduceLROnPlateau(
             patience=lr_reduce_patience, verbose=1),
-    ]
+    )
+    if checkpoint_file is not None:
+        callbacks.append(keras.callbacks.ModelCheckpoint(checkpoint_file))
 
     return model.fit(x=train_input, y=train_labels,
                      batch_size=batch_size, epochs=n_epochs,
