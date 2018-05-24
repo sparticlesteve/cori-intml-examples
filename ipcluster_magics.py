@@ -11,7 +11,7 @@ import tempfile
 
 @magics_class
 class IPClusterMagics(Magics):
-    """Launch an IPyParallel cluster.
+    """engine an IPyParallel cluster.
 
 Usage:
   %ipcluster [options]
@@ -27,11 +27,12 @@ Options:
   -m --modules <str>       Modules to load (default none).
   -e --env <str>           Conda env to load (default none).
   -t --time <time>         Time limit (default 30:00).
-  -d --dir <path>          Directory to launch engines (default $HOME)
+  -d --dir <path>          Directory to engine engines (default $HOME)
   -C --const <str>         SLURM contraint (default haswell).
   -q --queue <str>         SLURM queue (default interactive).
   -J --name <str>          Job name (default ipyparallel)
 """
+
     def __init__(self, shell):
         super().__init__(shell)
         self.define_strings()
@@ -70,16 +71,21 @@ echo "Loaded env $env"
 ipengine
 echo "Started engine."
 """
+        self.controller_template = """       
+myip=$(ip addr show ipogif0 | grep '10\.' | awk '{{print $2}}' | awk -F'/' '{{print $1}}')
+ipcontroller --ip="$myip"
+echo "Started controller on '$myip'."
+"""
         
         self.cluster_template = """
 # Start controller
-myip=$(ip addr show ipogif0 | grep '10\.' | awk '{{print $2}}' | awk -F'/' '{{print $1}}')
-echo "My ip is '$myip'."
-ipcontroller --ip="$myip" &
+srun -N 1 -n 1 -c 1 -s bash {engine_script} &
 echo "Started controller"
 
+sleep 3
+
 # Start engines
-srun -n {num_engines} bash {launch_script}
+srun -N {num_engines} -n {num_engines} -c 1 -s bash {engine_script}
 echo "Started engines."
 """
 
@@ -129,28 +135,40 @@ echo "Started engines."
             env_str = self.env_template.format(env=env)
             fh.write(env_str)
         
+    def start_controller(self, fh):
+        fh.write(self.controller_template)
+        
     def start_engine(self, fh):
         fh.write(self.engine_template)
         
-    def start_cluster(self, fh, num_engines, launch_script):
+    def start_cluster(self, fh, num_engines, controller_script, engine_script):
         cluster_str = self.cluster_template.format(
             num_engines=num_engines,
-            launch_script=launch_script
+            controller_script=controller_script,
+            engine_script=engine_script
         )
         fh.write(cluster_str)
     
-    def create_launch_script(self, fh, modules, env):
+    def create_controller_script(self, fh, modules, env):
+        self.load_modules(fh, modules)
+        self.activate_env(fh, env)
+        self.start_controller(fh)
+        
+        print("controller")
+        self.read_script(fh)
+        
+    def create_engine_script(self, fh, modules, env):
         self.load_modules(fh, modules)
         self.activate_env(fh, env)
         self.start_engine(fh)
         
-        print("launch")
+        print("engine")
         self.read_script(fh)
         
-    def create_batch_script(self, fh, modules, env, num_engines, launch_script):
+    def create_batch_script(self, fh, modules, env, num_engines, controller_script, engine_script):
         self.load_modules(fh, modules)
         self.activate_env(fh, env)
-        self.start_cluster(fh, num_engines, launch_script)
+        self.start_cluster(fh, num_engines, controller_script, engine_script)
         
         print("batch")
         self.read_script(fh)
@@ -177,19 +195,29 @@ echo "Started engines."
         thread.start()
     
     def submit_job(self, args):
+        controller_prefix = os.path.join(os.environ['SCRATCH'], '.ipccontroller')
+        engine_prefix = os.path.join(os.environ['SCRATCH'], '.ipcengine')
         batch_prefix = os.path.join(os.environ['SCRATCH'], '.ipcbatch')
-        launch_prefix = os.path.join(os.environ['SCRATCH'], '.ipclaunch')
         
         # Create temporary files
         # They'll be destroyed after submission
-        launch_fh = tempfile.NamedTemporaryFile('w', prefix=launch_prefix)
+        engine_fh = tempfile.NamedTemporaryFile('w', prefix=engine_prefix)
+        controller_fh = tempfile.NamedTemporaryFile('w', prefix=controller_prefix)
         batch_fh = tempfile.NamedTemporaryFile('w', prefix=batch_prefix)
-        fhs = [launch_fh, batch_fh]
+        fhs = [controller_fh, engine_fh, batch_fh]
         
-        # Create launch script
-        launch_script = launch_fh.name
-        self.create_launch_script(
-            launch_fh,
+        # Create controller script
+        controller_script = controller_fh.name
+        self.create_controller_script(
+            controller_fh,
+            args['modules'],
+            args['env']
+        )
+
+        # Create engine script
+        engine_script = engine_fh.name
+        self.create_engine_script(
+            engine_fh,
             args['modules'],
             args['env']
         )
@@ -201,7 +229,8 @@ echo "Started engines."
             args['modules'], 
             args['env'],
             args['num_engines'],
-            launch_script
+            controller_script,
+            engine_script
         )
 
         # Run salloc
