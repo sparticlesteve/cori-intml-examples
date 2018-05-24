@@ -144,10 +144,16 @@ echo "Started engines."
         self.activate_env(fh, env)
         self.start_engine(fh)
         
+        print("launch")
+        self.read_script(fh)
+        
     def create_batch_script(self, fh, modules, env, num_engines, launch_script):
         self.load_modules(fh, modules)
         self.activate_env(fh, env)
         self.start_cluster(fh, num_engines, launch_script)
+        
+        print("batch")
+        self.read_script(fh)
         
     def read_script(self, fh):
         fh.seek(0)
