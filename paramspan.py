@@ -142,7 +142,6 @@ class ParamSpanWidget(ipw.VBox):
 
     def visualize_wrapper(self, *change):
         """Call visualization function and capture output"""
-        print("vis")
         # Do nothing if selection is empty:
         # Empty list evaluates to False
         if not self.param_table.get_selected_rows():

@@ -58,35 +58,40 @@ Options:
 # Load modules
 mod="{module}"
 module load "$mod"
-echo "Loaded module $mod"
+#echo "Loaded module $mod"
 export PATH=$PYTHONUSERBASE/bin:$PATH
 """
         self.env_template = """
 # Load conda env
 env="{env}"
 source activate "$env"
-echo "Loaded env $env"
+#echo "Loaded env $env"
 """
         self.engine_template = """
-ipengine
-echo "Started engine."
+ipengine --log-to-file
+#echo "Started engine."
 """
+
         self.controller_template = """       
 myip=$(ip addr show ipogif0 | grep '10\.' | awk '{{print $2}}' | awk -F'/' '{{print $1}}')
-ipcontroller --ip="$myip"
-echo "Started controller on '$myip'."
+ipcontroller --ip="$myip" --log-to-file
+#echo "Started controller on '$myip'."
 """
         
         self.cluster_template = """
+# Get head node hostname (from mom node)
+headnode=$(scontrol show job "$SLURM_JOBID" | grep BatchHost | awk -F= '{{print $2}}')
+
 # Start controller
-srun -N 1 -n 1 -c 1 -s bash {engine_script} &
-echo "Started controller"
+# cat {controller_script}
+ssh -o LogLevel=error $headnode 'bash {controller_script}' > /dev/null &
+#echo "Started controller"
 
 sleep 3
 
 # Start engines
 srun -N {num_engines} -n {num_engines} -c 1 -s bash {engine_script}
-echo "Started engines."
+#echo "Started engines."
 """
 
     def parse_args(self, line):
@@ -154,7 +159,6 @@ echo "Started engines."
         self.activate_env(fh, env)
         self.start_controller(fh)
         
-        print("controller")
         self.read_script(fh)
         
     def create_engine_script(self, fh, modules, env):
@@ -162,7 +166,6 @@ echo "Started engines."
         self.activate_env(fh, env)
         self.start_engine(fh)
         
-        print("engine")
         self.read_script(fh)
         
     def create_batch_script(self, fh, modules, env, num_engines, controller_script, engine_script):
@@ -170,14 +173,13 @@ echo "Started engines."
         self.activate_env(fh, env)
         self.start_cluster(fh, num_engines, controller_script, engine_script)
         
-        print("batch")
         self.read_script(fh)
         
     def read_script(self, fh):
         fh.seek(0)
-        print("Script:")
-        print(subprocess.check_output(['cat', fh.name]).decode())
-        print("EOF")
+        # print("Script:")
+        # print(subprocess.check_output(['cat', fh.name]).decode())
+        # print("EOF")
     
     def get_salloc_line(self, batch_script, args):
         return self.salloc_template.format(script=batch_script, **args)
@@ -235,7 +237,7 @@ echo "Started engines."
 
         # Run salloc
         salloc_line = self.get_salloc_line(batch_script, args)
-        print(salloc_line)
+        # print(salloc_line)
         self.system_thread(salloc_line, fhs)
 
     @line_magic
