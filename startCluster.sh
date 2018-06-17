@@ -14,7 +14,7 @@ echo "Launching controller"
 ipcontroller --ip="$headIP" & #--log-to-file &
 #ipcontroller --ip="$headIP" --profile=${profile} --log-to-file
 #--nodb
-sleep 10
+sleep 20
  
 echo "Launching engines"
 srun ipengine #--log-to-file
