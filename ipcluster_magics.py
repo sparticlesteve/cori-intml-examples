@@ -87,7 +87,7 @@ headnode=$(scontrol show job "$SLURM_JOBID" | grep BatchHost | awk -F= '{{print 
 ssh -o LogLevel=error $headnode 'bash {controller_script}' > /dev/null &
 #echo "Started controller"
 
-sleep 3
+sleep 30
 
 # Start engines
 srun -N {num_engines} -n {num_engines} -c 1 -s bash {engine_script}
