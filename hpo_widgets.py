@@ -1,23 +1,24 @@
 # stdlib
-import warnings
-import threading
-import queue
 import concurrent.futures as cf
 import copy
+import itertools
 import pickle
+import queue
+import threading
+import warnings
 
 # 3rd party
-import numpy as np
-import pandas as pd
+import bqplot as bq
+import ipyparallel as ipp
 from IPython.display import display
 import ipywidgets as ipw
-import ipyparallel as ipp
-import bqplot as bq
+import numpy as np
+import pandas as pd
 import qgrid
 
 
 class ModelPlot(ipw.VBox):
-    def __init__(self, y, x=None, xlim=None, ylim=None, xlabel=None, ylabel=None):
+    def __init__(self, y, x=None, xlim=None, ylim=None, xlabel=None, ylabel=None, title=None):
         super().__init__()
 
         self.x = x
@@ -25,6 +26,7 @@ class ModelPlot(ipw.VBox):
         self.ylim = ylim or [0, 1]
         self.xlabel = xlabel or 'x'
         self.ylabel = ylabel or 'y'
+        self.title = title or "{} vs {}".format(ylabel, xlabel)
 
         if isinstance(y, list):
             self.y = y
@@ -127,11 +129,20 @@ class ModelPlot(ipw.VBox):
 
 
 class ParamSpanWidget(ipw.VBox):
-    def __init__(self, compute_func, vis_func, params, ipp_cluster_id=None, 
+    def __init__(self, compute_func, vis_func, params, columns=None, ipp_cluster_id=None, 
                  product=False, output_layout=None, qgrid_layout=None):
         """
-        live: bool
-        Whether to pass future to visualize upon task start. Otherwise, results are given after task end.
+        compute_func: function 
+        task to submit to IPyParallel for model output
+        
+        vis_func: function 
+        function that produces a visualization of the model output (e.g. ModelPlot)
+        
+        params: dict
+        grid search parameters
+        
+        ipp_cluster_id: str
+        optional ipyparallel cluster id for connecting to a specific controller
         
         product: bool
         Whether to take the cartesian product of parameters (grid search). Otherwise, they must be the same length.
@@ -158,14 +169,11 @@ class ParamSpanWidget(ipw.VBox):
         self.dview = self.ipp_client.direct_view()
         self.lview = self.ipp_client.load_balanced_view()
 
+        self.columns = ["status", "epoch"] + [k for k in params] + ["loss", "val_loss", "acc", "val_acc"]
+
         # setup the dataframe used to populate the table
-        self.params_df = pd.DataFrame(
-            params,
-            columns=[
-                "status", "epoch", 
-                "h1", "h2", "h3", "dropout", "optimizer", 
-                "loss", "val_loss", "acc", "val_acc"
-            ])
+        self.compute_param_keys = params.keys()
+        self.params_df = pd.DataFrame(params, columns=self.columns)
         self.params_df["status"] = ["Not Started"] * self.params_df.shape[0]
         self.params_df["epoch"] = [-1] * self.params_df.shape[0]
 
@@ -187,8 +195,14 @@ class ParamSpanWidget(ipw.VBox):
         # add event listeners to the table
         self.add_handlers()
 
+        # add buttons for stopping and restarting runs
+        self._stop_btn = ipw.Button(description="Stop selected")
+        self._stop_btn.on_click(self.stop_selected_models)
+        self._restart_btn = ipw.Button(description="Restart selected")
+        self._restart_btn.on_click(self.restart_selected_models)
+
         # Add the widgets to this container
-        self.children = [self.output, self.param_table]
+        self.children = [self.output, ipw.HBox([self._stop_btn, self._restart_btn]), self.param_table]
         
         # store all the model related elements and futures
         table_size = self.param_table.get_changed_df().shape[0]
@@ -223,7 +237,7 @@ class ParamSpanWidget(ipw.VBox):
             # paramset_id is the row index,
             # paramset is the dictionary of params
             paramitems = self.param_table.get_changed_df().filter(
-                items=["h1", "h2", "h3", "dropout", "optimizer"]).T.to_dict().items()
+                items=self.compute_param_keys).T.to_dict().items()
 
             self.debug.append_stdout("Submitting: {}\n".format(paramitems))
             for paramset_id, paramset in paramitems:
@@ -260,8 +274,6 @@ class ParamSpanWidget(ipw.VBox):
                     self.model_messages[id].put(pickle.dumps(local_data))
         except Exception as e:
             self.debug.append_stdout("Exception while updating table and plot: {}\n".format(e.args))
-        finally:
-            self.model_messages[id].join()
 
     def update_data(self, id, fut):
         """Consumer of data messages, updates table and plots"""
@@ -290,7 +302,7 @@ class ParamSpanWidget(ipw.VBox):
 
                 if local_data['status'] == "Ended Epoch":
                     #self.debug.append_stdout("Updating table data for {}: {}\n".format(id, local_data))
-                    self.debug.append_stdout("Plotting data for {}: {}\n".format(id, local_data))
+                    #self.debug.append_stdout("Plotting data for {}: {}\n".format(id, local_data))
                     self.model_plots[id].update(local_data['logs'])
                     #if self._active_plot == id:
                     #    self.display_plot_updates(id)
@@ -337,12 +349,13 @@ class ParamSpanWidget(ipw.VBox):
 
     def display_plot_updates(self, id):
         try:
-            #self.output_ready.wait()
-            #self.output_ready.clear()
+            model_id = self.param_table.get_changed_df().index[id]
+            self.output_ready.wait()
+            self.output_ready.clear()
             self.output.clear_output(wait=True)
             with self.output:
-                display(self.model_plots[id])
-            #self.output_ready.set()
+                display(self.model_plots[model_id])
+            self.output_ready.set()
         except Exception as e:
             self.debug.append_stdout("Exception while rendering plot {}: {}\n".format(id, e.args))
 
@@ -354,11 +367,15 @@ class ParamSpanWidget(ipw.VBox):
             if len(event['new']) == 0:
                 return
 
-            # this means that the same row was selected again, don't re-render the plot
-            if len(event['old']) > 0 and event['new'][0] == event['old'][0]:
-                return
-
             self._active_plot = event['new'][0]
             self.display_plot_updates(self._active_plot)
         except Exception as e:
             self.debug.append_stdout("Exception while switching to plot {}: {}\n".format(event, e.args))
+
+    def stop_selected_models(self, event):
+        srows = self.param_table.get_selected_rows()
+        self.debug.append_stdout("Stop rows {}\n".format(srows))
+    
+    def restart_selected_models(self, event):
+        srows = self.param_table.get_selected_rows()
+        self.debug.append_stdout("Restart rows {}\n".format(srows))
