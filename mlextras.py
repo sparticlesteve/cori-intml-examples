@@ -1,6 +1,10 @@
+import os
+
 import keras
-from mnist import build_model
+import tensorflow as tf
 from ipyparallel.datapub import publish_data
+
+from mnist import build_model
 
 class IPyParallelLogger(keras.callbacks.Callback):
     def on_train_begin(self, logs):
@@ -14,6 +18,16 @@ class IPyParallelLogger(keras.callbacks.Callback):
 
     def on_epoch_end(self, epoch, logs):
         publish_data({"logs": logs, "epoch": epoch, "status": "Ended Epoch"})
+
+def configure_session():
+    """Make a TF session configuration with appropriate thread settings"""
+    n_inter_threads = int(os.environ.get('NUM_INTER_THREADS', 2))
+    n_intra_threads = int(os.environ.get('NUM_INTRA_THREADS', 32))
+    config = tf.ConfigProto(
+        inter_op_parallelism_threads=n_inter_threads,
+        intra_op_parallelism_threads=n_intra_threads
+    )
+    return tf.Session(config=config)
 
 def build_and_train(x_train, y_train, valid_frac, batch_size, n_epochs, 
                     h1, h2, h3, dropout, optimizer, verbose=0, nthreads=1,
