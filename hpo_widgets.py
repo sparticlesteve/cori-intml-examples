@@ -1,23 +1,25 @@
 # stdlib
-import warnings
-import threading
-import queue
 import concurrent.futures as cf
 import copy
+import itertools
 import pickle
+import queue
+import threading
+import time
+import warnings
 
 # 3rd party
+import bqplot as bq
+import ipyparallel as ipp
+from IPython.display import display, clear_output, update_display
+import ipywidgets as ipw
 import numpy as np
 import pandas as pd
-from IPython.display import display
-import ipywidgets as ipw
-import ipyparallel as ipp
-import bqplot as bq
 import qgrid
 
 
 class ModelPlot(ipw.VBox):
-    def __init__(self, y, x=None, xlim=None, ylim=None, xlabel=None, ylabel=None):
+    def __init__(self, y, x=None, xlim=None, ylim=None, xlabel=None, ylabel=None, title=None):
         super().__init__()
 
         self.x = x
@@ -25,6 +27,7 @@ class ModelPlot(ipw.VBox):
         self.ylim = ylim or [0, 1]
         self.xlabel = xlabel or 'x'
         self.ylabel = ylabel or 'y'
+        self.title = title or "{} vs {}".format(ylabel, xlabel)
 
         if isinstance(y, list):
             self.y = y
@@ -103,15 +106,30 @@ class ModelPlot(ipw.VBox):
 
     def update_one(self, i, data):
         try:
-            self.lines[i].y = np.append(self.lines[i].y, data[self.y[i]])
-            self.scatters[i].y = np.append(self.scatters[i].y, data[self.y[i]])
+            # check to see if we should fill in past data or just get the latest points
+            if "history" in data and len(data["history"][self.y[i]]) > len(self.lines[i].y) + 1:
+                self.lines[i].y = data["history"][self.y[i]]
+                self.scatters[i].y = data["history"][self.y[i]]
 
-            if self.x and self.x in data:
-                self.lines[i].x = np.append(self.lines[i].x, data[self.x])
-                self.scatters[i].x = np.append(self.scatters[i].x, data[self.x])
+                if self.x and self.x in data["history"]:
+                    self.lines[i].x = data["history"][self.x]
+                    self.scatters[i].x = data["history"][self.x]
+                else:
+                    self.lines[i].x = np.array([i for i in range(len(self.lines[0].y))])
+                    self.scatters[i].x = np.array([i for i in range(len(self.lines[0].y))])
+            # we are caught up, just add the latest data points
+            elif "logs" in data:
+                self.lines[i].y = np.append(self.lines[i].y, data["logs"][self.y[i]])
+                self.scatters[i].y = np.append(self.scatters[i].y, data["logs"][self.y[i]])
+
+                if self.x and self.x in data["logs"]:
+                    self.lines[i].x = np.append(self.lines[i].x, data["logs"][self.x])
+                    self.scatters[i].x = np.append(self.scatters[i].x, data["logs"][self.x])
+                else:
+                    self.lines[i].x = np.array([i for i in range(len(self.lines[0].y))])
+                    self.scatters[i].x = np.array([i for i in range(len(self.lines[0].y))])
             else:
-                self.lines[i].x = np.array([i for i in range(len(self.lines[0].y))])
-                self.scatters[i].x = np.array([i for i in range(len(self.lines[0].y))])
+                self.debug.append_stdout("i {}, data {}\n".format(i, data))
         except Exception as e:
             self.debug.append_stdout("Exception plotting a line: {}\n".format(e.args))
             self.debug.append_stdout("Plot: {}, Data: {}".format(i, data))
@@ -127,11 +145,20 @@ class ModelPlot(ipw.VBox):
 
 
 class ParamSpanWidget(ipw.VBox):
-    def __init__(self, compute_func, vis_func, params, ipp_cluster_id=None, 
+    def __init__(self, compute_func, vis_func, params, columns=None, ipp_cluster_id=None, 
                  product=False, output_layout=None, qgrid_layout=None):
         """
-        live: bool
-        Whether to pass future to visualize upon task start. Otherwise, results are given after task end.
+        compute_func: function 
+        task to submit to IPyParallel for model output
+        
+        vis_func: function 
+        function that produces a visualization of the model output (e.g. ModelPlot)
+        
+        params: dict
+        grid search parameters
+        
+        ipp_cluster_id: str
+        optional ipyparallel cluster id for connecting to a specific controller
         
         product: bool
         Whether to take the cartesian product of parameters (grid search). Otherwise, they must be the same length.
@@ -158,14 +185,28 @@ class ParamSpanWidget(ipw.VBox):
         self.dview = self.ipp_client.direct_view()
         self.lview = self.ipp_client.load_balanced_view()
 
+        list_params = {}
+        for k in params:
+            if type(params[k]) is np.ndarray:
+                list_params[k] = params[k].tolist()
+            else:
+                list_params[k] = list(params[k])
+
+        self.compute_params = list_params
+        self.columns = ["status", "epoch"] + [k for k in params] + ["loss", "val_loss", "acc", "val_acc"]
+
+        display_params = copy.deepcopy(list_params)
+        for k in display_params:
+            needs_str = False
+            for i in range(len(display_params[k])):
+                if isinstance(list, type(display_params[k][i])):
+                    needs_str = True
+            if needs_str:
+                display_params[k] = [str(i) for i in display_params[k]]
+        
         # setup the dataframe used to populate the table
-        self.params_df = pd.DataFrame(
-            params,
-            columns=[
-                "status", "epoch", 
-                "h1", "h2", "h3", "dropout", "optimizer", 
-                "loss", "val_loss", "acc", "val_acc"
-            ])
+        #self.compute_param_keys = params.keys()
+        self.params_df = pd.DataFrame(display_params, columns=self.columns)
         self.params_df["status"] = ["Not Started"] * self.params_df.shape[0]
         self.params_df["epoch"] = [-1] * self.params_df.shape[0]
 
@@ -187,19 +228,26 @@ class ParamSpanWidget(ipw.VBox):
         # add event listeners to the table
         self.add_handlers()
 
+        # add buttons for stopping and restarting runs
+        self._stop_btn = ipw.Button(description="Stop selected")
+        self._stop_btn.on_click(self.stop_selected_models)
+        self._restart_btn = ipw.Button(description="Restart selected")
+        self._restart_btn.on_click(self.restart_selected_models)
+
         # Add the widgets to this container
-        self.children = [self.output, self.param_table]
+        self.children = [self.output, ipw.HBox([self._stop_btn, self._restart_btn]), self.param_table]
         
         # store all the model related elements and futures
         table_size = self.param_table.get_changed_df().shape[0]
         self.model_submits = [None] * table_size
         self.model_runs = [None] * table_size
         self.model_plots = [self.vis_func() for i in range(table_size)]
+        self.model_displays = [None] * table_size
         self.model_watchers = [None] * table_size
         self.model_updaters = [None] * table_size
-        self.model_messages = [queue.Queue() for i in range(table_size)]
         
         # thread Events and Queues for managing resources
+        self.model_messages = [queue.Queue() for i in range(table_size)]
         self.table_ready = threading.Event()
         self.output_ready = threading.Event()
         self.table_ready.set()
@@ -219,11 +267,12 @@ class ParamSpanWidget(ipw.VBox):
 
     def submit_computations(self):
         """Start threads that submit tasks to IPyParallel and update data"""
-        try:
+        try:            
             # paramset_id is the row index,
             # paramset is the dictionary of params
-            paramitems = self.param_table.get_changed_df().filter(
-                items=["h1", "h2", "h3", "dropout", "optimizer"]).T.to_dict().items()
+            paramitems = []
+            for i in range([len(v) for v in self.compute_params.values()][0]):
+                paramitems.append((i, {k: self.compute_params[k][i] for k in self.compute_params}))
 
             self.debug.append_stdout("Submitting: {}\n".format(paramitems))
             for paramset_id, paramset in paramitems:
@@ -258,10 +307,10 @@ class ParamSpanWidget(ipw.VBox):
                     local_data = copy.deepcopy(fut.data)
                     #self.debug.append_stdout("Pushing {}\n".format(local_data))
                     self.model_messages[id].put(pickle.dumps(local_data))
+                else:
+                    time.sleep(1)
         except Exception as e:
             self.debug.append_stdout("Exception while updating table and plot: {}\n".format(e.args))
-        finally:
-            self.model_messages[id].join()
 
     def update_data(self, id, fut):
         """Consumer of data messages, updates table and plots"""
@@ -281,7 +330,7 @@ class ParamSpanWidget(ipw.VBox):
 
                 local_data = pickle.loads(raw_data)
 
-                #self.debug.append_stdout("Received data for {}: {}\n".format(id, fut.data))
+                self.debug.append_stdout("Received data for {}: {}\n".format(id, fut.data))
                 #self.debug.append_stdout("Updating table with data\n")
                 self.table_ready.wait()
                 self.table_ready.clear()
@@ -290,8 +339,8 @@ class ParamSpanWidget(ipw.VBox):
 
                 if local_data['status'] == "Ended Epoch":
                     #self.debug.append_stdout("Updating table data for {}: {}\n".format(id, local_data))
-                    self.debug.append_stdout("Plotting data for {}: {}\n".format(id, local_data))
-                    self.model_plots[id].update(local_data['logs'])
+                    #self.debug.append_stdout("Plotting data for {}: {}\n".format(id, local_data))
+                    self.model_plots[id].update(local_data)
                     #if self._active_plot == id:
                     #    self.display_plot_updates(id)
 
@@ -299,14 +348,14 @@ class ParamSpanWidget(ipw.VBox):
                 self.table_ready.set()
                 self.model_messages[id].task_done()
         except Exception as e:
-            self.debug.append_stdout("Exception while updating table and plot: {}\n".format(e.args))
+            self.debug.append_stdout("Exception while updating {} table and plot: {}\n".format(id, e.args))
         finally:
             self.model_messages[id].task_done()
 
     def update_table(self, id, data):
         try:
             for k in data:
-                #self.debug.append_stdout("Updating {} for {} with {}\n".format(k, id, data[k]))
+                self.debug.append_stdout("Updating {} for {} with {}\n".format(k, id, data[k]))
                 if k == 'logs':
                     for kl in data['logs']:
                         if kl in self.params_df:
@@ -331,18 +380,19 @@ class ParamSpanWidget(ipw.VBox):
 
     def _render_plots(self, *args):
         for i in range(self.params_df.shape[0]):
-            self.output.clear_output(wait=True)
             with self.output:
-                display(self.model_plots[i])
+                clear_output(wait=True)
+                self.model_displays[i] = display(self.model_plots[i], display_id=True)
 
     def display_plot_updates(self, id):
         try:
-            #self.output_ready.wait()
-            #self.output_ready.clear()
-            self.output.clear_output(wait=True)
+            model_id = self.param_table.get_changed_df().index[id]
+            self.output_ready.wait()
+            self.output_ready.clear()
             with self.output:
-                display(self.model_plots[id])
-            #self.output_ready.set()
+                clear_output(wait=True)
+                update_display(self.model_plots[model_id], display_id=self.model_displays[model_id])
+            self.output_ready.set()
         except Exception as e:
             self.debug.append_stdout("Exception while rendering plot {}: {}\n".format(id, e.args))
 
@@ -354,11 +404,15 @@ class ParamSpanWidget(ipw.VBox):
             if len(event['new']) == 0:
                 return
 
-            # this means that the same row was selected again, don't re-render the plot
-            if len(event['old']) > 0 and event['new'][0] == event['old'][0]:
-                return
-
             self._active_plot = event['new'][0]
             self.display_plot_updates(self._active_plot)
         except Exception as e:
             self.debug.append_stdout("Exception while switching to plot {}: {}\n".format(event, e.args))
+
+    def stop_selected_models(self, event):
+        srows = self.param_table.get_selected_rows()
+        self.debug.append_stdout("Stop rows {}\n".format(srows))
+    
+    def restart_selected_models(self, event):
+        srows = self.param_table.get_selected_rows()
+        self.debug.append_stdout("Restart rows {}\n".format(srows))
