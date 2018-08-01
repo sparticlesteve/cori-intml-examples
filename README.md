@@ -25,6 +25,7 @@ First setup the environment (e.g. by sourcing the setup.sh script) and do
 # Give the kernel a unique name
 python -m ipykernel install --user --name jupyter-dl
 ```
+#`
 
 If you want to try out the IPyWidgets examples, you'll have to also install
 and enable the notebook extensions:
@@ -34,6 +35,7 @@ and enable the notebook extensions:
 # Enable the extensions
 # Confirm the extensions are enabled
 ```
+#`
 
 ## Starting the cluster
 
