@@ -18,7 +18,6 @@ class IPyParallelLogger(keras.callbacks.Callback):
             "val_loss": [],
             "epoch": []
         }
-
         publish_data({"status": "Begin Training", "history": self.history})
 
     def on_train_end(self, logs):
@@ -31,9 +30,7 @@ class IPyParallelLogger(keras.callbacks.Callback):
         for k in logs:
             self.history[k].append(logs[k])
         self.history["epoch"].append(epoch)
-
         publish_data({"status": "Ended Epoch", "epoch": epoch, "history": self.history})
-
 
 def configure_session():
     """Make a TF session configuration with appropriate thread settings"""
