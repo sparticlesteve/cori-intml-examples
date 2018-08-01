@@ -1,12 +1,8 @@
 # stdlib
-import concurrent.futures as cf
 import copy
-import itertools
-import pickle
-import queue
 import threading
 import time
-import warnings
+import traceback
 
 # 3rd party
 import bqplot as bq
@@ -27,7 +23,7 @@ class ModelPlot(ipw.VBox):
         self.ylim = ylim or [0, 1]
         self.xlabel = xlabel or 'x'
         self.ylabel = ylabel or 'y'
-        self.title = title or "{} vs {}".format(ylabel, xlabel)
+        self.title = title or "{} vs {}".format(self.ylabel, self.xlabel)
 
         if isinstance(y, list):
             self.y = y
@@ -68,7 +64,8 @@ class ModelPlot(ipw.VBox):
         self.fig = bq.Figure(
             marks=self.lines + self.scatters, 
             axes=[self.xax, self.yax], 
-            layout=ipw.Layout(height='550px', width='100%'))
+            layout=ipw.Layout(height='550px', width='100%'),
+            title=self.title)
         self.debug = ipw.Output(layout=ipw.Layout(height='100px', overflow_y='scroll'))
         self.children = [self.fig]
 
@@ -82,63 +79,64 @@ class ModelPlot(ipw.VBox):
                 interpolation='linear',
                 display_legend=display_legend,
                 colors=[color],
-                labels=[y]
+                labels=[y],
+                enable_hover=True
             ))
             self.scatters.append(bq.Scatter(
                 x=[],
                 y=[],
                 scales={'x': self.xscale, 'y': self.yscale},
-                colors=[color]
+                colors=[color],
+                enable_hover=True
             ))
             self.labels.append(y)
             self.num_lines += 1
+
+            self.lines[-1].tooltip = bq.Tooltip(
+                fields=['name'],
+                show_labels=True)
+            self.lines[-1].interactions = {
+                'hover': 'tooltip',
+                'click': 'tooltip'
+            }
+                        
+            self.scatters[-1].tooltip = bq.Tooltip(
+                fields=['y','x'],
+                labels=[y, self.xlabel], 
+                formats=['.4f', ''],
+                show_labels=True)
+            self.scatters[-1].interactions = {
+                'hover': 'tooltip',
+                'click': 'tooltip'
+            }
         except Exception as e:
             self.debug.append_stdout("Exception when adding a line and points to plot: {}".format(e.args))
 
-    def resize_fig(self, i):
+    def resize_fig(self):
         try:
-            self.xscale.min = min(self.xscale.min, np.min(self.lines[i].x))
-            self.xscale.max = max(self.xscale.max, np.max(self.lines[i].x))
-            self.yscale.min = min(self.yscale.min, np.min(self.lines[i].y))
-            self.yscale.max = max(self.yscale.max, np.max(self.lines[i].y))
+            for i in range(len(self.lines)):
+                if len(self.lines[i].x) > 0:
+                    self.xscale.min = min(self.xscale.min, float(np.min(self.lines[i].x)))
+                    self.xscale.max = max(self.xscale.max, float(np.max(self.lines[i].x)))
+                    self.yscale.min = min(self.yscale.min, float(np.min(self.lines[i].y)))
+                    self.yscale.max = max(self.yscale.max, float(np.max(self.lines[i].y)))
         except Exception as e:
             self.debug.append_stdout("Exception when resizing the figure: {}\n".format(e.args))
-
-    def update_one(self, i, data):
-        try:
-            # check to see if we should fill in past data or just get the latest points
-            if "history" in data and len(data["history"][self.y[i]]) > len(self.lines[i].y) + 1:
-                self.lines[i].y = data["history"][self.y[i]]
-                self.scatters[i].y = data["history"][self.y[i]]
-
-                if self.x and self.x in data["history"]:
-                    self.lines[i].x = data["history"][self.x]
-                    self.scatters[i].x = data["history"][self.x]
-                else:
-                    self.lines[i].x = np.array([i for i in range(len(self.lines[0].y))])
-                    self.scatters[i].x = np.array([i for i in range(len(self.lines[0].y))])
-            # we are caught up, just add the latest data points
-            elif "logs" in data:
-                self.lines[i].y = np.append(self.lines[i].y, data["logs"][self.y[i]])
-                self.scatters[i].y = np.append(self.scatters[i].y, data["logs"][self.y[i]])
-
-                if self.x and self.x in data["logs"]:
-                    self.lines[i].x = np.append(self.lines[i].x, data["logs"][self.x])
-                    self.scatters[i].x = np.append(self.scatters[i].x, data["logs"][self.x])
-                else:
-                    self.lines[i].x = np.array([i for i in range(len(self.lines[0].y))])
-                    self.scatters[i].x = np.array([i for i in range(len(self.lines[0].y))])
-            else:
-                self.debug.append_stdout("i {}, data {}\n".format(i, data))
-        except Exception as e:
-            self.debug.append_stdout("Exception plotting a line: {}\n".format(e.args))
-            self.debug.append_stdout("Plot: {}, Data: {}".format(i, data))
 
     def update(self, data):
         try:
             for i in range(self.num_lines):
-                self.update_one(i, data)
-                self.resize_fig(i)
+                self.lines[i].y = np.array(data[self.y[i]])
+                self.scatters[i].y = np.array(data[self.y[i]])
+
+                if self.x and self.x in data:
+                    self.lines[i].x = np.array(data[self.x])
+                    self.scatters[i].x = np.array(data[self.x])
+                else:
+                    self.lines[i].x = np.array([i for i in range(len(self.lines[0].y))])
+                    self.scatters[i].x = np.array([i for i in range(len(self.lines[0].y))])
+                
+            self.resize_fig()
         except Exception as e:
             self.debug.append_stdout("Exception while plotting lines and resizing figure: {}\n".format(e.args))
             self.debug.append_stdout("Data: {}\n".format(data))
@@ -146,44 +144,28 @@ class ModelPlot(ipw.VBox):
 
 class ParamSpanWidget(ipw.VBox):
     def __init__(self, compute_func, vis_func, params, columns=None, ipp_cluster_id=None, 
-                 product=False, output_layout=None, qgrid_layout=None):
+                 output_layout=None, qgrid_layout=None):
         """
         compute_func: function 
         task to submit to IPyParallel for model output
         
         vis_func: function 
         function that produces a visualization of the model output (e.g. ModelPlot)
-        
+
         params: dict
-        grid search parameters
+        grid search parameters, either lists/numpy arrays or list of lists/2D numpy arrays, where the outer lists have the same length
         
         ipp_cluster_id: str
         optional ipyparallel cluster id for connecting to a specific controller
-        
-        product: bool
-        Whether to take the cartesian product of parameters (grid search). Otherwise, they must be the same length.
         """
         super().__init__()
 
         self.compute_func = compute_func
         self.vis_func = vis_func
-        self.product = product
         self.output_layout = output_layout or \
             ipw.Layout(height='600px', border='1px solid', overflow_x='scroll', overflow_y='scroll')
         self.debug_layout = ipw.Layout(height='500px', border='1px solid', overflow_x='scroll', overflow_y='scroll')
         self.qgrid_layout = qgrid_layout or ipw.Layout()
-
-        self.executor = cf.ThreadPoolExecutor()
-
-        # connect to ipyparallel
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            if ipp_cluster_id:
-                self.ipp_client = ipp.Client(cluster_id="{}".format(ipp_cluster_id))
-            else:
-                self.ipp_client = ipp.Client()
-        self.dview = self.ipp_client.direct_view()
-        self.lview = self.ipp_client.load_balanced_view()
 
         list_params = {}
         for k in params:
@@ -220,11 +202,6 @@ class ParamSpanWidget(ipw.VBox):
         self.param_table.grid_options['forceFitColumns'] = True
         self.param_table.grid_options['editable'] = False
 
-        # set the first row to be selected by default
-        #self.param_table._selected_rows = [0]
-        #self.param_table._handle_qgrid_msg_helper({'type': 'selection_changed', 'rows': [0]})
-        #self.param_table._update_table()
-
         # add event listeners to the table
         self.add_handlers()
 
@@ -238,24 +215,22 @@ class ParamSpanWidget(ipw.VBox):
         self.children = [self.output, ipw.HBox([self._stop_btn, self._restart_btn]), self.param_table]
         
         # store all the model related elements and futures
-        table_size = self.param_table.get_changed_df().shape[0]
-        self.model_submits = [None] * table_size
-        self.model_runs = [None] * table_size
-        self.model_plots = [self.vis_func() for i in range(table_size)]
-        self.model_displays = [None] * table_size
-        self.model_watchers = [None] * table_size
-        self.model_updaters = [None] * table_size
-        
-        # thread Events and Queues for managing resources
-        self.model_messages = [queue.Queue() for i in range(table_size)]
-        self.table_ready = threading.Event()
-        self.output_ready = threading.Event()
-        self.table_ready.set()
-        self.output_ready.set()
+        self._num_models = self.param_table.get_changed_df().shape[0]
+        self.model_plots = [self.vis_func(title="Model {}: {}".format(i, 
+                {k: self.compute_params[k][i] for k in self.compute_params})) for i in range(self._num_models)]
+        self.model_displays = [None for i in range(self._num_models)]
+        self.model_data = [
+            ModelTaskData(["epoch","loss","val_loss","acc","val_acc"],["status","epoch"]) for i in range(self._num_models)]
+        self._model_controller = ModelController(ipp_cluster_id=ipp_cluster_id)
 
+        # select the first row by default
         self._active_plot = 0
+        self.param_table._handle_qgrid_msg_helper({'type': 'selection_changed', 'rows': [0]})
         
-        self.on_displayed(self._render_plots)
+        self._stop_updates = threading.Event()
+        self._stop_updates.clear()
+        self._update_thread = threading.Thread(target=self.update_data)
+        self._update_thread.start()
 
     def add_handlers(self):
         """Add event handlers to the table"""
@@ -264,137 +239,89 @@ class ParamSpanWidget(ipw.VBox):
     def remove_handlers(self):
         """Remove event handlers from the table"""
         self.param_table.off('selection_changed', self.display_visualization)
-
+        
     def submit_computations(self):
-        """Start threads that submit tasks to IPyParallel and update data"""
+        """Start all models"""
         try:            
-            # paramset_id is the row index,
-            # paramset is the dictionary of params
-            paramitems = []
-            for i in range([len(v) for v in self.compute_params.values()][0]):
-                paramitems.append((i, {k: self.compute_params[k][i] for k in self.compute_params}))
-
-            self.debug.append_stdout("Submitting: {}\n".format(paramitems))
-            for paramset_id, paramset in paramitems:
-                self.model_submits[paramset_id] = self.executor.submit(self.model_submit(paramset_id, paramset))
+            for i in range(self._num_models):
+                self._model_controller.start_model(
+                    i,
+                    self.compute_func, 
+                    {k: self.compute_params[k][i] for k in self.compute_params})
         except Exception as e:
             self.debug.append_stdout("Exception while submitting runs: {}\n".format(e.args))
 
-    def model_submit(self, paramset_id, paramset):
-        """Submit the model run to IPyParallel, then set a producer and consumer to handle data output"""
+    def update_data(self, interval=1):
         try:
-            # Launch model run via IPyParallel
-            self.model_runs[paramset_id] = self.lview.apply(self.compute_func, **paramset)
-            # Monitor incoming data
-            self.model_watchers[paramset_id] = self.executor.submit(self.watch_data, paramset_id, self.model_runs[paramset_id])
-            # Update table and plots
-            self.model_updaters[paramset_id] = self.executor.submit(self.update_data, paramset_id, self.model_runs[paramset_id])
-        except Exception as e:
-            self.debug.append_stdout("Exception while submitting model runs, starting producer and consumer: {}\n".format(e.args))
+            while not self._stop_updates.is_set():
+                active_models = self._model_controller.get_running_models()
 
-    def watch_data(self, id, fut, interval=1):
-        """Producer of data messages from IPyParallel"""
-        try:
-            last_status = ""
-            done = False
-            while not done and fut is not None:
-                # once the future completes, don't exit until the last status message has come in
-                if fut.ready() and last_status == "Ended Training":
-                    done = True
-
-                if fut.data and len(fut.data) > 0 and fut.data['status'] != last_status:
-                    last_status = fut.data['status']
-                    local_data = copy.deepcopy(fut.data)
-                    #self.debug.append_stdout("Pushing {}\n".format(local_data))
-                    self.model_messages[id].put(pickle.dumps(local_data))
-                else:
-                    time.sleep(1)
-        except Exception as e:
-            self.debug.append_stdout("Exception while updating table and plot: {}\n".format(e.args))
-
-    def update_data(self, id, fut):
-        """Consumer of data messages, updates table and plots"""
-        try:
-            while 1:
-                raw_data = self.model_messages[id].get()
-                #self.debug.append_stdout("data consumer for {}: {}\n".format(id, local_data))
-
-                # Handle empty queue
-                if raw_data is None:
-                    # quit once all data has been processed
-                    if fut is None or fut.ready():
-                        break
-                    # otherwise, the queue is empty, but the producer may not be finished
-                    else:
+                for model_id in active_models:
+                    data = active_models[model_id].data
+                    table_updated = False
+                    
+                    if len(data) == 0:
                         continue
+                    
+                    if "history" in data and len(data["history"]["epoch"]) > 0:
+                        current_data_length = self.model_data[model_id].num_data_rows
+                        history_data_length = len(data["history"]["epoch"])
 
-                local_data = pickle.loads(raw_data)
+                        if current_data_length < history_data_length:
+                            if current_data_length == 0:
+                                i = 0
+                            else:
+                                i = current_data_length - 1
+                        
+                            while i < history_data_length:
+                                self.model_data[model_id].append_plot_data_row(
+                                    {k: data["history"][k][i] for k in data["history"]})
+                                i += 1
 
-                self.debug.append_stdout("Received data for {}: {}\n".format(id, fut.data))
-                #self.debug.append_stdout("Updating table with data\n")
-                self.table_ready.wait()
-                self.table_ready.clear()
+                            # apply plot data update
+                            if model_id == self._active_plot:
+                                self.model_plots[model_id].update(self.model_data[model_id].get_plot_data())
 
-                self.update_table(id, local_data)
+                            for k in data["history"]:
+                                self.param_table._handle_qgrid_msg_helper({
+                                    'type': 'cell_change',
+                                    'column': k,
+                                    'row_index': model_id,
+                                    'unfiltered_index': model_id,
+                                    'value': data["history"][k][-1]
+                                })
+                            table_updated = True
 
-                if local_data['status'] == "Ended Epoch":
-                    #self.debug.append_stdout("Updating table data for {}: {}\n".format(id, local_data))
-                    #self.debug.append_stdout("Plotting data for {}: {}\n".format(id, local_data))
-                    self.model_plots[id].update(local_data)
-                    #if self._active_plot == id:
-                    #    self.display_plot_updates(id)
+                    if "status" in data and self.param_table.get_changed_df()["status"][model_id]:
+                        self.param_table._handle_qgrid_msg_helper({
+                            'type': 'cell_change',
+                            'column': "status",
+                            'row_index': model_id,
+                            'unfiltered_index': model_id,
+                            'value': data["status"]
+                        })
+                        table_updated = True
+                        
+                        if data["status"] == "Ended Training":
+                            self._model_controller.set_model_completed(model_id)
+                    
+                    if "epoch" in data:
+                        self.param_table._handle_qgrid_msg_helper({
+                            'type': 'cell_change',
+                            'column': "epoch",
+                            'row_index': model_id,
+                            'unfiltered_index': model_id,
+                            'value': data["epoch"]
+                        })
+                        table_updated = True
 
-                #self.debug.append_stdout("Releasing data lock\n")
-                self.table_ready.set()
-                self.model_messages[id].task_done()
+                    if table_updated:
+                        self.param_table._update_table()                                        
+
+                time.sleep(interval)
         except Exception as e:
-            self.debug.append_stdout("Exception while updating {} table and plot: {}\n".format(id, e.args))
-        finally:
-            self.model_messages[id].task_done()
+            self.debug.append_stdout("Exception while applying updates from futures: {}\n".format(traceback.format_exc(e)))
 
-    def update_table(self, id, data):
-        try:
-            for k in data:
-                self.debug.append_stdout("Updating {} for {} with {}\n".format(k, id, data[k]))
-                if k == 'logs':
-                    for kl in data['logs']:
-                        if kl in self.params_df:
-                            self.param_table._handle_qgrid_msg_helper({
-                                'type': 'cell_change',
-                                'column': kl,
-                                'row_index': id,
-                                'unfiltered_index': id,
-                                'value': data['logs'][kl]
-                            })
-                elif k in self.params_df:
-                    self.param_table._handle_qgrid_msg_helper({
-                        'type': 'cell_change',
-                        'column': k,
-                        'row_index': id,
-                        'unfiltered_index': id,
-                        'value': data[k]
-                    })
-            self.param_table._update_table()
-        except Exception as e:
-            self.debug.append_stdout("Exception while updating table with data from {} : {}, {}\n".format(id, data, e.args))
-
-    def _render_plots(self, *args):
-        for i in range(self.params_df.shape[0]):
-            with self.output:
-                clear_output(wait=True)
-                self.model_displays[i] = display(self.model_plots[i], display_id=True)
-
-    def display_plot_updates(self, id):
-        try:
-            model_id = self.param_table.get_changed_df().index[id]
-            self.output_ready.wait()
-            self.output_ready.clear()
-            with self.output:
-                clear_output(wait=True)
-                update_display(self.model_plots[model_id], display_id=self.model_displays[model_id])
-            self.output_ready.set()
-        except Exception as e:
-            self.debug.append_stdout("Exception while rendering plot {}: {}\n".format(id, e.args))
 
     def display_visualization(self, event, widget_instance):
         try:
@@ -404,15 +331,154 @@ class ParamSpanWidget(ipw.VBox):
             if len(event['new']) == 0:
                 return
 
-            self._active_plot = event['new'][0]
-            self.display_plot_updates(self._active_plot)
+            row_id = event['new'][0]
+            model_id = self.param_table.get_changed_df().index[row_id]
+            self._active_plot = model_id
+                        
+            # only update the plot if there is more data since the last viewing
+            if self.model_data[model_id].num_data_rows > len(self.model_plots[model_id].lines[0].y):
+                plot_data = self.model_data[model_id].get_plot_data()
+                self.model_plots[model_id].update(plot_data)
+            
+            with self.output:
+                clear_output(wait=True)
+                if self.model_displays[model_id] is None:
+                    self.model_displays[model_id] = display(self.model_plots[model_id], display_id=True)
+                else:
+                    update_display(self.model_plots[model_id], display_id=self.model_displays[model_id])
         except Exception as e:
             self.debug.append_stdout("Exception while switching to plot {}: {}\n".format(event, e.args))
 
     def stop_selected_models(self, event):
         srows = self.param_table.get_selected_rows()
         self.debug.append_stdout("Stop rows {}\n".format(srows))
+
+        #for row_id in srows:
+        #    model_id = self.param_table.get_changed_df().index[row_id]
     
     def restart_selected_models(self, event):
         srows = self.param_table.get_selected_rows()
         self.debug.append_stdout("Restart rows {}\n".format(srows))
+        
+        #for row_id in srows:
+        #    model_id = self.param_table.get_changed_df().index[row_id]
+
+    def get_resource_usage(self, model_id):
+        pass
+    
+    def get_models_status(self):
+        status = self.param_table.get_changed_df()[["status"]]
+
+
+class ModelController(object):
+    def __init__(self, ipp_cluster_id=None):
+        self._futures = []
+        self._completed = []
+        self._active_models = {}
+        self._completed_models = {}
+        self._ipp_client = ipp.Client(cluster_id=ipp_cluster_id)
+        self._lview = self._ipp_client.load_balanced_view()
+
+    def start_model(self, model_id, compute_func, params):
+        self._futures.append(self._lview.apply(compute_func, **params))
+        self._active_models[model_id] = len(self._futures) - 1
+
+    def stop_model(self, model_id):
+        pass
+    
+    def restart_model(self, model_id, compute_func, params):
+        #self._futures[model_id] = self._lview.apply(compute_func, **params)
+        pass
+    
+    def set_model_completed(self, model_id):
+        if model_id not in self._completed:
+            self._completed.append(model_id)
+    
+    def get_completed_models(self):
+        return {k: self._futures[self._completed_models[k]] for k in self._completed_models}
+    
+    def get_running_models(self):
+        for i in range(len(self._futures)):
+            if self._futures[i] is not None and self._futures[i].done() and i in self._completed:
+                self._futures[i] = None
+                self._completed_models[i] = self._completed.index(i)
+                del self._active_models[i]
+        
+        return {k: self._futures[self._active_models[k]] for k in self._active_models}
+
+
+class ModelTaskData(object):
+    def __init__(self, plot_columns, status_columns):
+        super(ModelTaskData, self).__init__()
+        
+        self._plot_data = ModelPlotTable(plot_columns)
+        self._status_data = {k: None for k in status_columns}
+        self._updated = True
+
+    @property
+    def has_updates(self):
+        return self._updated
+
+    @property
+    def num_data_rows(self):
+        return len(self._plot_data.rows[0])
+    
+    def get_plot_data(self):
+        return self._plot_data.to_dict()
+    
+    def append_plot_data_row(self, d):
+        self._plot_data.append_row(d)
+        self._updated = True
+    
+    def set_status_data(self, d):
+        self._status_data.update(d)
+        self._updated = True
+    
+    def get_status_data(self):
+        return self._status_data
+
+
+class ModelPlotTable(object):
+    def __init__(self, column_names):
+        super(ModelPlotTable, self).__init__()
+
+        self._id = None
+        self._num_columns = len(column_names)
+        self._num_rows = 0
+        self._column_map = {column_names[i]: i for i in range(len(column_names))}
+        self._column_data = [list() for c in column_names]
+    
+    @property
+    def columns(self):
+        return list(self._column_map.keys())
+    
+    @property
+    def rows(self):
+        return self._column_data
+        
+    def append_column(self, name, vals=None):
+        if name in self._column_map:
+            raise KeyError("column {} is already in this table".format(name))
+
+        if vals:
+            if len(vals) == self._num_rows:
+                self._column_data.append(list(vals))
+            else:
+                raise ValueError("Number of rows must match table")
+        else:
+            data = [None] * self._num_rows
+            self._column_data.append(data)
+
+        self._column_map[name] = len(self._column_data) - 1
+        self._updated = True
+
+    def append_row(self, column_data):
+        for column_name in self._column_map:
+            column_index = self._column_map[column_name]
+            if column_name in column_data:
+                self._column_data[column_index].append(column_data[column_name])
+            else:
+                self._column_data[column_index].append(None)
+
+    def to_dict(self):
+        return {k: self._column_data[v] for k, v in self._column_map.items()}
