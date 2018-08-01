@@ -10,7 +10,7 @@ clusterID=cori_${SLURM_JOB_ID}
  
 echo "Launching controller"
 ipcontroller --ip="$headIP" --cluster-id=$clusterID &
-sleep 20
+sleep 30
  
 echo "Launching engines"
 srun ipengine --cluster-id=$clusterID
