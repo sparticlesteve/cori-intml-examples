@@ -21,21 +21,19 @@ http://www.nersc.gov/users/data-analytics/data-analytics-2/jupyter-and-rstudio/
 
 First setup the environment (e.g. by sourcing the setup.sh script) and do
 
-```bash
-# Give the kernel a unique name
-python -m ipykernel install --user --name jupyter-dl
-```
-#`
+    ```bash
+    # Give the kernel a unique name
+    python -m ipykernel install --user --name jupyter-dl
+    ```
 
 If you want to try out the IPyWidgets examples, you'll have to also install
 and enable the notebook extensions:
 
-```bash
-# Install extensions in your jupyter folder
-# Enable the extensions
-# Confirm the extensions are enabled
-```
-#`
+    ```bash
+    # Install extensions in your jupyter folder
+    # Enable the extensions
+    # Confirm the extensions are enabled
+    ```
 
 ## Starting the cluster
 
