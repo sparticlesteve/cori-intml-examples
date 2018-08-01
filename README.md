@@ -93,3 +93,13 @@ These examples leverage the load-balanced scheduler of IPyParallel to farm
 the single-node training tasks out to your cluster. One can then interactively
 query and monitor the status of the tasks via the AsyncResult objects as shown
 in the notebooks.
+
+## Interactive widgets for distributed HPO
+
+Finally, we have two examples that show how one can incorporate interactive
+widgets for live monitoring of hyper-parameter training tasks:
+
+- DistWidgetHPO_mnist.ipynb
+- DistWidgetHPO_rpv.ipynb
+
+Note these are still quite experimental and under development.
