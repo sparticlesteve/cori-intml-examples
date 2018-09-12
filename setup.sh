@@ -1,8 +1,7 @@
 # Example environment setup script for jupyter deep learning on Cori
 
-# Using our conda environment which has TF, keras, horovod, IPyParallel, etc.
-. /usr/common/software/python/3.6-anaconda-4.4/etc/profile.d/conda.sh
-conda activate /global/cscratch1/sd/sfarrell/conda/isc-ihpc
+# Setup the Cori software
+module load tensorflow/intel-1.9.0-py36
 
 # Set some threading environment variables
 export KMP_AFFINITY="granularity=fine,compact,1,0"
