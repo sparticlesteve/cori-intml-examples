@@ -17,7 +17,7 @@ from keras import layers, models, optimizers
 
 
 def load_file(filename, n_samples):
-    with h5py.File(filename) as f:
+    with h5py.File(filename, 'r') as f:
         data_group = f['all_events']
         data = data_group['hist'][:n_samples][:,:,:,None]
         labels = data_group['y'][:n_samples]
