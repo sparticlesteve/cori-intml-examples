@@ -59,10 +59,7 @@ def build_model(input_shape, conv_sizes=[8, 16, 32], fc_sizes=[64],
     outputs = layers.Dense(1, activation='sigmoid')(h)
 
     # Construct the optimizer
-    opt_dict = dict(Adam=optimizers.Adam,
-                    Nadam=optimizers.Nadam,
-                    Adadelta=optimizers.Adadelta)
-    opt = opt_dict[optimizer](lr=lr)
+    opt = getattr(optimizers, optimizer)(lr=lr)
     if use_horovod:
         import horovod.keras as hvd
         opt = hvd.DistributedOptimizer(opt)
