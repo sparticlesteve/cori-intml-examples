@@ -9,3 +9,6 @@ export KMP_BLOCKTIME=1
 export NUM_INTER_THREADS=2
 export NUM_INTRA_THREADS=32
 export OMP_NUM_THREADS=$NUM_INTRA_THREADS
+
+# Cray HPO library
+export PYTHONPATH=/global/cscratch1/sd/sfarrell/cray-hpo/software
