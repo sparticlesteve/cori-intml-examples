@@ -35,11 +35,8 @@ def load_dataset(path, n_train=412416, n_valid=137471, n_test=137471):
             (valid_input, valid_labels, valid_weights),
             (test_input, test_labels, test_weights))
 
-def build_model(input_shape,
-                conv_sizes=[8, 16, 32], fc_sizes=[64],
-                dropout=0.5,
-                optimizer='Adam', lr=0.001,
-                use_horovod=False):
+def build_model(input_shape, conv_sizes=[8, 16, 32], fc_sizes=[64],
+                dropout=0.5, optimizer='Adam', lr=0.001, use_horovod=False):
 
     # Define the inputs
     inputs = layers.Input(shape=input_shape)
